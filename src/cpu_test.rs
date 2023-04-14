@@ -199,6 +199,31 @@ fn test_add_imm_operation() {
     assert_eq!(cpu.registers[1], 0x30F3);
 }
 
+// Control instructions
+
+#[test]
+fn test_branch_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b0000_1110_0000_1111;
+
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+
+    assert_eq!(cpu.program_counter, 0x3010);
+}
+
+#[test]
+fn test_jump_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1100_0000_0100_0000;
+
+    cpu.registers[1] = 0x3400;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+
+    assert_eq!(cpu.program_counter, 0x3400);
+}
+
 //
 // Helper functions
 //
@@ -225,7 +250,7 @@ fn test_update_condition_codes() {
 
     assert_eq!(cpu.processor_status_register, 0xFFF4);
 
-    cpu.set_condition_codes(0);
+    cpu.set_condition_codes(0x0);
 
     assert_eq!(cpu.processor_status_register, 0xFFF2);
 }

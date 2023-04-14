@@ -26,4 +26,4 @@ impl IndexMut<u16> for Memory {
 
 #[cfg(test)]
 #[path = "./memory_test.rs"]
-mod memory;
+mod memory_test;

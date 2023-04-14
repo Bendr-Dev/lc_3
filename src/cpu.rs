@@ -38,8 +38,8 @@ impl CPU {
             0x7 => self.store_offset(curr_op),
             0xE => self.load_immediate(curr_op),
             // Control instructions
-            0x0 => unimplemented!("Branch instruction"),
-            0xC => unimplemented!("Jump instruction"),
+            0x0 => self.branch(curr_op),
+            0xC => self.jump(curr_op),
             0xF => unimplemented!("TRAP"),
             // Reserved instruction
             0xD => unimplemented!("Reserved operation"),
@@ -106,8 +106,10 @@ impl CPU {
 
         // TODO: test this, but probably going to have to make sure memory range is valid (0x3000 - 0xFDFF)
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
+        let result: u16 = self.memory[memory_address];
 
-        self.registers[dst as usize] = self.memory[memory_address];
+        self.registers[dst as usize] = result;
+        self.set_condition_codes(result);
     }
 
     fn load_indirect(&mut self, operation: u16) {
@@ -115,8 +117,9 @@ impl CPU {
         let signed_extension: u16 = self.sign_extension(operation & 0x01FF, 9);
 
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
-
-        self.registers[dst as usize] = self.memory[self.memory[memory_address]];
+        let result: u16 = self.memory[self.memory[memory_address]];
+        self.registers[dst as usize] = result;
+        self.set_condition_codes(result);
     }
 
     fn load_offset(&mut self, operation: u16) {
@@ -138,6 +141,7 @@ impl CPU {
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
 
         self.registers[dst as usize] = memory_address;
+        self.set_condition_codes(memory_address);
     }
 
     fn store(&mut self, operation: u16) {
@@ -167,6 +171,25 @@ impl CPU {
         let memory_address: u16 = self.registers[base as usize].wrapping_add(offset);
 
         self.memory[memory_address] = self.registers[src as usize];
+    }
+
+    fn branch(&mut self, operation: u16) {
+        let op_condition_codes: u8 = ((operation & 0x0E00) >> 9) as u8;
+        let offset: u16 = self.sign_extension(operation & 0x003F, 6);
+        let condition_codes: u8 = (self.processor_status_register & 0x0007) as u8;
+
+        match op_condition_codes & condition_codes {
+            result if result > 0 => {
+                self.program_counter = self.program_counter.wrapping_add(offset);
+            },
+            _ => {}
+        }
+    }
+
+    fn jump(&mut self, operation: u16) {
+        let base: u8 = ((operation & 0x01C0) >> 6) as u8;
+
+        self.program_counter = self.registers[base as usize];
     }
 
     fn sign_extension(&self, mut bits: u16, bit_count: usize) -> u16 {

@@ -224,6 +224,65 @@ fn test_jump_operation() {
     assert_eq!(cpu.program_counter, 0x3400);
 }
 
+#[test]
+fn test_trap_print_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0001;
+
+    cpu.registers[0] = 0x0041;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+
+    assert_eq!(((cpu.registers[0] & 0x00FF) as u8) as char, 'A');
+}
+
+#[test]
+fn test_trap_print_byte_char_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0010;
+
+    cpu.registers[0] = 0x3100;
+    cpu.memory[0x3100] = 0x54;
+    cpu.memory[0x3101] = 0x65;
+    cpu.memory[0x3102] = 0x73;
+    cpu.memory[0x3103] = 0x74;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+}
+
+#[test]
+fn test_trap_print_nibble_char_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0100;
+
+    cpu.registers[0] = 0x3100;
+    cpu.memory[0x3100] = 0x6548;
+    cpu.memory[0x3101] = 0x6C6C;
+    cpu.memory[0x3102] = 0x216F;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+}
+
+#[test]
+#[should_panic]
+fn test_trap_halt_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0101;
+
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+}
+
+#[test]
+#[should_panic]
+fn test_trap_invalid_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_1111_1111;
+
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+}
+
 //
 // Helper functions
 //

@@ -1,5 +1,5 @@
+use console::Term;
 use std::char::decode_utf16;
-use std::io::{self, Write};
 
 use crate::memory::Memory;
 
@@ -107,7 +107,6 @@ impl CPU {
         let dst: u8 = ((operation & 0x0E00) >> 9) as u8;
         let signed_extension: u16 = self.sign_extension(operation & 0x01FF, 9);
 
-        // TODO: test this, but probably going to have to make sure memory range is valid (0x3000 - 0xFDFF)
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
         let result: u16 = self.memory[memory_address];
 
@@ -199,7 +198,16 @@ impl CPU {
         let trap_vect: u8 = (operation & 0x00FF) as u8;
 
         match trap_vect {
-            0x20 => unimplemented!("GETC"),
+            0x20 => {
+                let term: Term = Term::stdout();
+                match term.read_char() {
+                    Ok(c) => {
+                        self.registers[0] = c as u16;
+                        self.registers[0] = self.registers[0] & 0x00FF;
+                    }
+                    Err(_) => {}
+                }
+            }
             0x21 => {
                 println!("{:?}", ((self.registers[0] & 0x00FF) as u8) as char);
             }
@@ -218,7 +226,19 @@ impl CPU {
 
                 println!("{}", string_list.join(""));
             }
-            0x23 => unimplemented!("IN"),
+            0x23 => {
+                let term: Term = Term::stdout();
+                match term.write_line("Please enter a character.") {
+                    Ok(_) => match term.read_char() {
+                        Ok(c) => {
+                            self.registers[0] = c as u16;
+                            self.registers[0] = self.registers[0] & 0x00FF;
+                        }
+                        Err(_) => {}
+                    },
+                    Err(_) => {}
+                };
+            }
             0x24 => {
                 let mut address: u16 = self.registers[0];
                 let mut char_list: Vec<char> = vec![];

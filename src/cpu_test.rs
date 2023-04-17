@@ -225,6 +225,19 @@ fn test_jump_operation() {
 }
 
 #[test]
+#[ignore = "User prompt"]
+fn test_trap_read_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0000;
+
+    cpu.registers[0] = 0x0041;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+
+    println!("{}", (cpu.registers[0] as u8) as char);
+}
+
+#[test]
 fn test_trap_print_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1111_0000_0010_0001;
@@ -234,6 +247,19 @@ fn test_trap_print_operation() {
     cpu.tick();
 
     assert_eq!(((cpu.registers[0] & 0x00FF) as u8) as char, 'A');
+}
+
+#[test]
+#[ignore = "User prompt"]
+fn test_trap_read_prompt_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b1111_0000_0010_0011;
+
+    cpu.registers[0] = 0x0041;
+    cpu.memory[0x3000] = operation;
+    cpu.tick();
+
+    println!("{}", (cpu.registers[0] as u8) as char);
 }
 
 #[test]

@@ -15,6 +15,25 @@ fn test_init_cpu() {
 }
 
 //
+//  Read image
+//
+
+#[test]
+fn test_read_image() {
+    let mut cpu: CPU = CPU::new();
+    cpu.read_image(&String::from("./resources/2048.obj"));
+
+    assert_eq!(cpu.memory[0x3000], 0b0010_1100_0001_0111); // LD R6, STACK; load stack pointer instruction
+}
+
+#[test]
+#[should_panic]
+fn test_invalid_read_image() {
+    let mut cpu: CPU = CPU::new();
+    cpu.read_image(&String::from("./notreal/fake.obj"));
+}
+
+//
 // Operations
 //
 

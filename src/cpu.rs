@@ -1,5 +1,9 @@
 use console::Term;
-use std::char::decode_utf16;
+use std::{
+    char::decode_utf16,
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+};
 
 use crate::memory::Memory;
 
@@ -20,7 +24,41 @@ impl CPU {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn execute_program(&mut self, file_path: &String) {
+        self.read_image(file_path);
+
+        while self.program_counter < (u16::MAX as usize + 1) as u16 {
+            self.tick();
+        }
+    }
+
+    fn read_image(&mut self, file_path: &String) {
+        // Attempt to read file path
+        let mut file: File = match File::open(file_path) {
+            Ok(ok_file) => ok_file,
+            Err(_) => panic!("Error trying to read file with path: {}", file_path),
+        };
+
+        // Origin is where the instructions in memory will begin, which is 16 bits
+        let origin_buf: &mut [u8; 2] = &mut [0; 2];
+        file.read_exact(origin_buf).unwrap();
+
+        let origin: u16 = u16::from_be_bytes(*origin_buf);
+        let mut memory_pointer: u16 = origin;
+
+        // Ignore the origin and read the rest of the image
+        file.seek(SeekFrom::Start(2)).unwrap();
+        let bytes: &mut Vec<u8> = &mut Vec::new();
+        file.read_to_end(bytes).unwrap();
+
+        // Each instruction is 16 bit long, all LC-3 programs are big-endian
+        for byte_pair in bytes.chunks_exact(2) {
+            self.memory[memory_pointer] = u16::from_be_bytes([byte_pair[0], byte_pair[1]]);
+            memory_pointer = memory_pointer.wrapping_add(1);
+        }
+    }
+
+    fn tick(&mut self) {
         let curr_op: u16 = self.memory[self.program_counter];
         self.program_counter += 1;
         let op_code: u8 = ((curr_op & 0xF000) >> 12) as u8;

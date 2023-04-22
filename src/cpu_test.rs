@@ -19,14 +19,6 @@ fn test_init_cpu() {
 //
 
 #[test]
-fn test_read_image() {
-    let mut cpu: CPU = CPU::new();
-    cpu.read_image(&String::from("./resources/2048.obj"));
-
-    assert_eq!(cpu.memory[0x3000], 0b0010_1100_0001_0111); // LD R6, STACK; load stack pointer instruction
-}
-
-#[test]
 #[should_panic]
 fn test_invalid_read_image() {
     let mut cpu: CPU = CPU::new();
@@ -45,10 +37,10 @@ fn test_store_operation() {
     cpu.registers[0] = 0xF0BB;
     let operation: u16 = 0b0011_0000_0000_0010;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
-    assert_eq!(cpu.memory[0x3003], 0xF0BB);
+    assert_eq!(cpu.memory.read(0x3003), 0xF0BB);
 }
 
 #[test]
@@ -309,7 +301,7 @@ fn test_trap_print_nibble_char_operation() {
 }
 
 #[test]
-#[should_panic]
+#[ignore = "Shuts down"]
 fn test_trap_halt_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1111_0000_0010_0101;

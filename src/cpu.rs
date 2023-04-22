@@ -1,9 +1,4 @@
-use console::Term;
-use std::{
-    char::decode_utf16,
-    fs::File,
-    io::{Read, Seek, SeekFrom},
-};
+use std::{fs::File, io::Read, slice::Chunks};
 
 use crate::memory::Memory;
 
@@ -20,14 +15,14 @@ impl CPU {
             registers: [0x0; 8],
             program_counter: 0x3000,
             memory: Memory::new(),
-            processor_status_register: 0x2, // 2 sets the zero register flag to HIGH
+            processor_status_register: 0x0,
         }
     }
 
     pub fn execute_program(&mut self, file_path: &String) {
         self.read_image(file_path);
 
-        while self.program_counter < (u16::MAX as usize + 1) as u16 {
+        while self.program_counter < u16::MAX {
             self.tick();
         }
     }
@@ -39,29 +34,39 @@ impl CPU {
             Err(_) => panic!("Error trying to read file with path: {}", file_path),
         };
 
-        // Origin is where the instructions in memory will begin, which is 16 bits
-        let origin_buf: &mut [u8; 2] = &mut [0; 2];
-        file.read_exact(origin_buf).unwrap();
+        let mut data: Vec<u8> = Vec::new();
 
-        let origin: u16 = u16::from_be_bytes(*origin_buf);
-        let mut memory_pointer: u16 = origin;
+        file.read_to_end(&mut data).unwrap();
 
-        // Ignore the origin and read the rest of the image
-        file.seek(SeekFrom::Start(2)).unwrap();
-        let bytes: &mut Vec<u8> = &mut Vec::new();
-        file.read_to_end(bytes).unwrap();
+        match data.len() % 2 {
+            result if result != 0 => panic!("Buffer size not even"),
+            _ => {}
+        }
 
-        // Each instruction is 16 bit long, all LC-3 programs are big-endian
-        for byte_pair in bytes.chunks_exact(2) {
-            self.memory[memory_pointer] = u16::from_be_bytes([byte_pair[0], byte_pair[1]]);
-            memory_pointer = memory_pointer.wrapping_add(1);
+        // Collect the data into chunks of size two 8 bit values as the lc3 stores data by 16 bits
+        let mut data_chunks: Chunks<u8> = data.chunks(2);
+
+        let program_counter_chunk = data_chunks.next().unwrap();
+
+        let mut program_counter: u16 =
+            u16::from_be_bytes([program_counter_chunk[0], program_counter_chunk[1]]);
+
+        self.program_counter = program_counter; // Set program counter to origin provided by image (usually 0x3000)
+
+        // Iterate through the rest of the chunks and insert into memory sequentially
+        for data_chunk in data_chunks {
+            self.memory.write(
+                program_counter,
+                u16::from_be_bytes([data_chunk[0], data_chunk[1]]),
+            );
+            program_counter = program_counter.wrapping_add(1);
         }
     }
 
     fn tick(&mut self) {
-        let curr_op: u16 = self.memory[self.program_counter];
-        self.program_counter += 1;
-        let op_code: u8 = ((curr_op & 0xF000) >> 12) as u8;
+        let curr_op: u16 = self.memory.read(self.program_counter);
+        self.program_counter = self.program_counter.wrapping_add(1);
+        let op_code = curr_op >> 12;
 
         match op_code {
             // Instruction set
@@ -81,6 +86,7 @@ impl CPU {
             // Control instructions
             0x0 => self.branch(curr_op),
             0xC => self.jump(curr_op),
+            0x4 => self.jump_register(curr_op),
             0xF => self.trap(curr_op),
             // Reserved instruction
             0xD => unimplemented!("Reserved operation"),
@@ -146,7 +152,7 @@ impl CPU {
         let signed_extension: u16 = self.sign_extension(operation & 0x01FF, 9);
 
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
-        let result: u16 = self.memory[memory_address];
+        let result: u16 = self.memory.read(memory_address);
 
         self.registers[dst as usize] = result;
         self.set_condition_codes(result);
@@ -156,8 +162,10 @@ impl CPU {
         let dst: u8 = ((operation & 0x0E00) >> 9) as u8;
         let signed_extension: u16 = self.sign_extension(operation & 0x01FF, 9);
 
-        let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
-        let result: u16 = self.memory[self.memory[memory_address]];
+        let indirect_memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
+        let memory_address: u16 = self.memory.read(indirect_memory_address);
+        let result: u16 = self.memory.read(memory_address);
+
         self.registers[dst as usize] = result;
         self.set_condition_codes(result);
     }
@@ -169,7 +177,7 @@ impl CPU {
 
         let memory_address: u16 = self.registers[base as usize].wrapping_add(offset);
 
-        let result: u16 = self.memory[memory_address];
+        let result: u16 = self.memory.read(memory_address);
         self.registers[dst as usize] = result;
         self.set_condition_codes(result);
     }
@@ -190,7 +198,8 @@ impl CPU {
 
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
 
-        self.memory[memory_address] = self.registers[src as usize];
+        self.memory
+            .write(memory_address, self.registers[src as usize]);
     }
 
     fn store_indirect(&mut self, operation: u16) {
@@ -198,9 +207,10 @@ impl CPU {
         let signed_extension: u16 = self.sign_extension(operation & 0x01FF, 9);
 
         let memory_address: u16 = self.program_counter.wrapping_add(signed_extension);
-        let memory_address_content: u16 = self.memory[memory_address];
+        let memory_address_content: u16 = self.memory.read(memory_address);
 
-        self.memory[memory_address_content] = self.registers[src as usize];
+        self.memory
+            .write(memory_address_content, self.registers[src as usize]);
     }
 
     fn store_offset(&mut self, operation: u16) {
@@ -210,12 +220,13 @@ impl CPU {
 
         let memory_address: u16 = self.registers[base as usize].wrapping_add(offset);
 
-        self.memory[memory_address] = self.registers[src as usize];
+        self.memory
+            .write(memory_address, self.registers[src as usize]);
     }
 
     fn branch(&mut self, operation: u16) {
         let op_condition_codes: u8 = ((operation & 0x0E00) >> 9) as u8;
-        let offset: u16 = self.sign_extension(operation & 0x003F, 6);
+        let offset: u16 = self.sign_extension(operation & 0x01FF, 9);
         let condition_codes: u8 = (self.processor_status_register & 0x0007) as u8;
 
         match op_condition_codes & condition_codes {
@@ -232,67 +243,71 @@ impl CPU {
         self.program_counter = self.registers[base as usize];
     }
 
+    fn jump_register(&mut self, operation: u16) {
+        let flag: u8 = ((operation & 0x0800) >> 11) as u8;
+        self.registers[7] = self.program_counter;
+
+        match flag {
+            0 => {
+                let base: u8 = ((operation & 0x01C0) >> 6) as u8;
+                self.program_counter = self.registers[base as usize];
+            }
+            _ => {
+                let offset: u16 = self.sign_extension(operation & 0x07FF, 11);
+                self.program_counter = self.program_counter.wrapping_add(offset);
+            }
+        }
+    }
+
     fn trap(&mut self, operation: u16) {
         let trap_vect: u8 = (operation & 0x00FF) as u8;
 
         match trap_vect {
             0x20 => {
-                let term: Term = Term::stdout();
-                match term.read_char() {
-                    Ok(c) => {
-                        self.registers[0] = c as u16;
-                        self.registers[0] = self.registers[0] & 0x00FF;
-                    }
-                    Err(_) => {}
-                }
+                let mut buffer: [u8; 1] = [0 as u8; 1];
+                std::io::stdin().read_exact(&mut buffer).unwrap();
+
+                self.registers[0] = buffer[0].into();
             }
             0x21 => {
-                println!("{:?}", ((self.registers[0] & 0x00FF) as u8) as char);
+                print!("{}", (self.registers[0] as u8) as char);
             }
             0x22 => {
-                let mut address: u16 = self.registers[0];
-                let mut string_list: Vec<String> = vec![];
-
-                while self.memory[address] != 0x0000 {
-                    string_list.push(
-                        decode_utf16([self.memory[address]])
-                            .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
-                            .collect::<String>(),
-                    );
-                    address = address.wrapping_add(0x0001);
+                let mut index = self.registers[0];
+                while index < u16::MAX && self.memory[index] != 0 {
+                    print!("{}", (self.memory[index] as u8) as char);
+                    index = index + 1;
                 }
-
-                println!("{}", string_list.join(""));
             }
             0x23 => {
-                let term: Term = Term::stdout();
-                match term.write_line("Please enter a character.") {
-                    Ok(_) => match term.read_char() {
-                        Ok(c) => {
-                            self.registers[0] = c as u16;
-                            self.registers[0] = self.registers[0] & 0x00FF;
-                        }
-                        Err(_) => {}
-                    },
-                    Err(_) => {}
-                };
+                print!("Please enter a character.");
+                let char_value: u16 = std::io::stdin()
+                    .bytes()
+                    .next()
+                    .and_then(|result| result.ok())
+                    .map(|byte| byte as u16)
+                    .unwrap();
+                self.registers[0] = char_value;
             }
             0x24 => {
-                let mut address: u16 = self.registers[0];
-                let mut char_list: Vec<char> = vec![];
+                let mut index = self.registers[0];
 
-                while self.memory[address] != 0x0000 {
-                    char_list.push(((self.memory[address] & 0x00FF) as u8) as char);
-                    char_list.push((((self.memory[address] & 0xFF00) >> 8) as u8) as char);
+                while index < u16::MAX && self.memory[index] != 0 {
+                    let word: u16 = self.memory[index];
+                    let bytes = word.to_be_bytes();
 
-                    address = address.wrapping_add(0x0001);
+                    print!("{}", bytes[1] as char);
+
+                    if bytes[0] != 0 {
+                        print!("{}", bytes[0] as char);
+                    }
+
+                    index = index + 1;
                 }
-
-                println!("{}", char_list.iter().collect::<String>());
             }
             0x25 => {
-                println!("Execution halting...");
-                panic!("Halt");
+                print!("\nHALT\n");
+                self.program_counter = u16::MAX;
             }
             _ => unreachable!("Invalid trap vector."),
         }
@@ -310,9 +325,9 @@ impl CPU {
         self.processor_status_register = self.processor_status_register & 0xFFF8;
 
         match result {
-            x if ((x & 0x8000) >> 15) == 1 => self.processor_status_register |= 0b100,
-            x if x == 0 => self.processor_status_register |= 0b010,
-            _ => self.processor_status_register |= 0b001,
+            x if (x >> 15) == 1 => self.processor_status_register |= 0b0000_0000_0000_0100,
+            x if x == 0 => self.processor_status_register |= 0b0000_0000_0000_0010,
+            _ => self.processor_status_register |= 0b0000_0000_0000_0001,
         };
     }
 }

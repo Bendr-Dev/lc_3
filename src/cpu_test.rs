@@ -6,12 +6,12 @@ use crate::cpu::CPU;
 
 #[test]
 fn test_init_cpu() {
-    let cpu: CPU = CPU::new();
+    let mut cpu: CPU = CPU::new();
 
     assert_eq!(cpu.program_counter, 0x3000);
-    assert_eq!(cpu.processor_status_register, 0b0000_0010);
+    assert_eq!(cpu.processor_status_register, 0x0);
     assert_eq!(cpu.registers, [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]);
-    assert_eq!(cpu.memory[0x3000], 0x0);
+    assert_eq!(cpu.memory.read(0x3000), 0x0);
 }
 
 //
@@ -50,11 +50,11 @@ fn test_store_indirect_operation() {
 
     cpu.registers[2] = 0x3400;
 
-    cpu.memory[0x3000] = operation;
-    cpu.memory[0x3002] = 0x3500;
+    cpu.memory.write(0x3000, operation);
+    cpu.memory.write(0x3002, 0x3500);
     cpu.tick();
 
-    assert_eq!(cpu.memory[0x3500], 0x3400);
+    assert_eq!(cpu.memory.read(0x3500), 0x3400);
 }
 
 #[test]
@@ -65,19 +65,19 @@ fn test_store_offset_operation() {
     cpu.registers[0] = 0x3100;
     cpu.registers[2] = 0x3400;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
-    assert_eq!(cpu.memory[0x3101], 0x3400);
+    assert_eq!(cpu.memory.read(0x3101), 0x3400);
 }
 
 #[test]
 fn test_load_operation() {
     let mut cpu: CPU = CPU::new();
-    cpu.memory[0x3003] = 0xF0BB;
+    cpu.memory.write(0x3003, 0xF0BB);
     let operation: u16 = 0b0010_0000_0000_0010;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[0], 0xF0BB);
@@ -88,7 +88,7 @@ fn test_load_imm_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1110_1110_1111_1111;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[7], 0x3100);
@@ -99,10 +99,10 @@ fn test_load_indirect_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1010_0010_1111_1111;
 
-    cpu.memory[0x3100] = 0x3400;
-    cpu.memory[0x3400] = 0x0005;
+    cpu.memory.write(0x3100, 0x3400);
+    cpu.memory.write(0x3400, 0x0005);
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[1], 0x0005);
@@ -116,7 +116,7 @@ fn test_load_imm_operation_subtraction() {
     cpu.program_counter = 0x30F6;
     assert_eq!(cpu.program_counter, 0x30F6);
 
-    cpu.memory[0x30F6] = operation;
+    cpu.memory.write(0x30F6, operation);
 
     cpu.tick();
 
@@ -129,9 +129,9 @@ fn test_load_offset_operation() {
     let operation: u16 = 0b0110_0100_0000_0001;
 
     cpu.registers[0] = 0x3100;
-    cpu.memory[0x3101] = 0xFFF5;
+    cpu.memory.write(0x3101, 0xFFF5);
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[2], 0xFFF5);
@@ -144,7 +144,7 @@ fn test_not_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1001_0010_0011_1111;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[0], 0x0);
@@ -159,7 +159,7 @@ fn test_and_operation() {
 
     let operation: u16 = 0b0101_0010_0000_0010;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[0], 0x0FF0);
@@ -174,7 +174,7 @@ fn test_and_imm_operation() {
 
     let operation: u16 = 0b0101_0010_0010_1011;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[0], 0x0FFF);
@@ -189,7 +189,7 @@ fn test_add_operation() {
 
     let operation: u16 = 0b0001_0010_0000_0010;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[0], 0x000A);
@@ -204,7 +204,7 @@ fn test_add_imm_operation() {
 
     let operation: u16 = 0b0001_0010_0011_1111;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.registers[1], 0x30F3);
@@ -215,9 +215,10 @@ fn test_add_imm_operation() {
 #[test]
 fn test_branch_operation() {
     let mut cpu: CPU = CPU::new();
+    cpu.processor_status_register = 0x2;
     let operation: u16 = 0b0000_1110_0000_1111;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.program_counter, 0x3010);
@@ -229,10 +230,35 @@ fn test_jump_operation() {
     let operation: u16 = 0b1100_0000_0100_0000;
 
     cpu.registers[1] = 0x3400;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(cpu.program_counter, 0x3400);
+}
+
+#[test]
+fn test_jump_register_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b0100_0000_0100_0000;
+
+    cpu.registers[1] = 0x3400;
+    cpu.memory.write(0x3000, operation);
+    cpu.tick();
+
+    assert_eq!(cpu.program_counter, 0x3400);
+    assert_eq!(cpu.registers[7], 0x3001);
+}
+
+#[test]
+fn test_jump_register_with_flag_operation() {
+    let mut cpu: CPU = CPU::new();
+    let operation: u16 = 0b0100_1000_0000_0010;
+
+    cpu.memory.write(0x3000, operation);
+    cpu.tick();
+
+    assert_eq!(cpu.program_counter, 0x3003);
+    assert_eq!(cpu.registers[7], 0x3001);
 }
 
 #[test]
@@ -242,7 +268,7 @@ fn test_trap_read_operation() {
     let operation: u16 = 0b1111_0000_0010_0000;
 
     cpu.registers[0] = 0x0041;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     println!("{}", (cpu.registers[0] as u8) as char);
@@ -254,7 +280,7 @@ fn test_trap_print_operation() {
     let operation: u16 = 0b1111_0000_0010_0001;
 
     cpu.registers[0] = 0x0041;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     assert_eq!(((cpu.registers[0] & 0x00FF) as u8) as char, 'A');
@@ -267,7 +293,7 @@ fn test_trap_read_prompt_operation() {
     let operation: u16 = 0b1111_0000_0010_0011;
 
     cpu.registers[0] = 0x0041;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 
     println!("{}", (cpu.registers[0] as u8) as char);
@@ -279,11 +305,11 @@ fn test_trap_print_byte_char_operation() {
     let operation: u16 = 0b1111_0000_0010_0010;
 
     cpu.registers[0] = 0x3100;
-    cpu.memory[0x3100] = 0x54;
-    cpu.memory[0x3101] = 0x65;
-    cpu.memory[0x3102] = 0x73;
-    cpu.memory[0x3103] = 0x74;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3100, 0x54);
+    cpu.memory.write(0x3101, 0x65);
+    cpu.memory.write(0x3102, 0x73);
+    cpu.memory.write(0x3103, 0x74);
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 }
 
@@ -293,10 +319,10 @@ fn test_trap_print_nibble_char_operation() {
     let operation: u16 = 0b1111_0000_0010_0100;
 
     cpu.registers[0] = 0x3100;
-    cpu.memory[0x3100] = 0x6548;
-    cpu.memory[0x3101] = 0x6C6C;
-    cpu.memory[0x3102] = 0x216F;
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3100, 0x6548);
+    cpu.memory.write(0x3101, 0x6C6C);
+    cpu.memory.write(0x3102, 0x216F);
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 }
 
@@ -306,7 +332,7 @@ fn test_trap_halt_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1111_0000_0010_0101;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 }
 
@@ -316,7 +342,7 @@ fn test_trap_invalid_operation() {
     let mut cpu: CPU = CPU::new();
     let operation: u16 = 0b1111_0000_1111_1111;
 
-    cpu.memory[0x3000] = operation;
+    cpu.memory.write(0x3000, operation);
     cpu.tick();
 }
 
@@ -350,7 +376,3 @@ fn test_update_condition_codes() {
 
     assert_eq!(cpu.processor_status_register, 0xFFF2);
 }
-
-//
-// Examples (Combination of instructions)
-//

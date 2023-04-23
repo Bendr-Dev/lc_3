@@ -46,7 +46,7 @@ impl CPU {
         // Collect the data into chunks of size two 8 bit values as the lc3 stores data by 16 bits
         let mut data_chunks: Chunks<u8> = data.chunks(2);
 
-        let program_counter_chunk = data_chunks.next().unwrap();
+        let program_counter_chunk: &[u8] = data_chunks.next().unwrap();
 
         let mut program_counter: u16 =
             u16::from_be_bytes([program_counter_chunk[0], program_counter_chunk[1]]);
@@ -66,7 +66,7 @@ impl CPU {
     fn tick(&mut self) {
         let curr_op: u16 = self.memory.read(self.program_counter);
         self.program_counter = self.program_counter.wrapping_add(1);
-        let op_code = curr_op >> 12;
+        let op_code: u16 = curr_op >> 12;
 
         match op_code {
             // Instruction set
@@ -90,13 +90,15 @@ impl CPU {
             0xF => self.trap(curr_op),
             // Reserved instruction
             0xD => unimplemented!("Reserved operation"),
+
+            // Any other op code
             _ => unreachable!("Bad op code"),
         }
     }
 
     fn not(&mut self, operation: u16) {
         let dst: u8 = ((operation & 0x0E00) >> 9) as u8;
-        let src: u8 = ((operation & 0x0160) >> 6) as u8;
+        let src: u8 = ((operation & 0x01C0) >> 6) as u8;
 
         self.registers[dst as usize] = !(self.registers[src as usize]);
         self.set_condition_codes(self.registers[dst as usize]);
@@ -104,7 +106,7 @@ impl CPU {
 
     fn add(&mut self, operation: u16) {
         let dst: u8 = ((operation & 0x0E00) >> 9) as u8;
-        let src1: u8 = ((operation & 0x0160) >> 6) as u8;
+        let src1: u8 = ((operation & 0x01C0) >> 6) as u8;
         let register_mode: u8 = ((operation & 0x0020) >> 4) as u8;
 
         match register_mode {
@@ -127,7 +129,7 @@ impl CPU {
 
     fn and(&mut self, operation: u16) {
         let dst: u8 = ((operation & 0x0E00) >> 9) as u8;
-        let src1: u8 = ((operation & 0x0160) >> 6) as u8;
+        let src1: u8 = ((operation & 0x01C0) >> 6) as u8;
         let register_mode: u8 = ((operation & 0x0020) >> 4) as u8;
 
         match register_mode {
@@ -267,16 +269,19 @@ impl CPU {
                 let mut buffer: [u8; 1] = [0 as u8; 1];
                 std::io::stdin().read_exact(&mut buffer).unwrap();
 
-                self.registers[0] = buffer[0].into();
+                self.registers[0] = buffer[0] as u16;
             }
             0x21 => {
                 print!("{}", (self.registers[0] as u8) as char);
             }
             0x22 => {
                 let mut index = self.registers[0];
-                while index < u16::MAX && self.memory[index] != 0 {
-                    print!("{}", (self.memory[index] as u8) as char);
+                let mut char_value: u16 = self.memory.read(index);
+
+                while char_value != 0 {
+                    print!("{}", (char_value as u8) as char);
                     index = index + 1;
+                    char_value = self.memory.read(index);
                 }
             }
             0x23 => {
@@ -290,19 +295,20 @@ impl CPU {
                 self.registers[0] = char_value;
             }
             0x24 => {
-                let mut index = self.registers[0];
+                let mut index: u16 = self.registers[0];
+                let mut char_bytes: u16 = self.memory.read(index);
 
-                while index < u16::MAX && self.memory[index] != 0 {
-                    let word: u16 = self.memory[index];
-                    let bytes = word.to_be_bytes();
+                while char_bytes != 0 {
+                    let low_char: char = ((char_bytes & 0x00FF) as u8) as char;
+                    print!("{}", low_char);
+                    let high_char: char = ((char_bytes & 0xFF00) as u8) as char;
 
-                    print!("{}", bytes[1] as char);
-
-                    if bytes[0] != 0 {
-                        print!("{}", bytes[0] as char);
+                    if high_char != '\0' {
+                        print!("{}", high_char);
                     }
 
                     index = index + 1;
+                    char_bytes = self.memory.read(index);
                 }
             }
             0x25 => {
@@ -325,9 +331,9 @@ impl CPU {
         self.processor_status_register = self.processor_status_register & 0xFFF8;
 
         match result {
-            x if (x >> 15) == 1 => self.processor_status_register |= 0b0000_0000_0000_0100,
-            x if x == 0 => self.processor_status_register |= 0b0000_0000_0000_0010,
-            _ => self.processor_status_register |= 0b0000_0000_0000_0001,
+            x if (x >> 15) == 1 => self.processor_status_register |= 0b100,
+            x if x == 0 => self.processor_status_register |= 0b010,
+            _ => self.processor_status_register |= 0b001,
         };
     }
 }

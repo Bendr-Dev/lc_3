@@ -29,7 +29,6 @@ fn main() {
     let mut cpu: CPU = CPU::new();
     cpu.execute_program(file_path);
 
-    // reset the stdin to
-    // original termios data
+    // Reset the stdin to original termios data
     tcsetattr(stdin, TCSANOW, &termios).unwrap();
 }
